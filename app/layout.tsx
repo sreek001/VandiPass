@@ -37,7 +37,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
       </head>
-      <body className="bg-[#f8fafc] text-slate-800 antialiased min-h-screen selection:bg-slate-900 selection:text-white">
+      <body className="bg-[#f8fafc] text-slate-800 antialiased min-h-screen selection:bg-emerald-600 selection:text-white">
         <Navbar />
         {children}
       </body>
