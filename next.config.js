@@ -12,6 +12,11 @@ const nextConfig = {
   },
   async redirects() {
     return [
+      {
+        source: '/',
+        destination: '/login',
+        permanent: false, // 307 temporary redirect for flexible auth routing
+      },
       { source: '/apply', destination: '/student', permanent: false },
       { source: '/scan', destination: '/conductor', permanent: false },
     ];
