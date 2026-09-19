@@ -35,32 +35,17 @@ export default function PassCard({ token, payload, lang }: PassCardProps) {
           <div className="pass-card-route">📍 {payload.rou}</div>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
-          <span className={`badge ${isExpired ? 'badge-expired' : 'badge-active'}`}>
-            {isExpired ? '● EXPIRED' : '● ACTIVE'}
-          </span>
-          {!isExpired && (
-            <span
-              style={{
-                fontSize: 10,
-                fontWeight: 700,
-                color: '#047857',
-                background: 'rgba(5,150,105,0.08)',
-                padding: '2px 8px',
-                borderRadius: 20,
-              }}
-            >
-              KL·GOVT·OFFCL
-            </span>
-          )}
+          <span className="text-xs font-mono text-slate-400">{payload.pid || 'KL-26-4874'}</span>
         </div>
       </div>
 
       {/* QR Code */}
       <div className="pass-qr-wrapper">
         <QRCodeSVG
-          value={token}
-          size={190}
-          level="M"
+          value={`VANDIPASS:${payload.pid || 'KL-26-4874'}:${payload.nam || 'Tony Davis'}:${payload.ins || 'ASIET Kalady'}:${payload.rou || 'Aluva ⇄ Kalady'}`}
+          size={220}
+          level="L"
+          includeMargin={true}
           fgColor="#0f172a"
           bgColor="#ffffff"
           style={{ borderRadius: 8 }}

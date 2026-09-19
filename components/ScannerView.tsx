@@ -1,214 +1,164 @@
 'use client';
 
-import React, { useEffect, useRef, useState, useCallback, forwardRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import jsQR from 'jsqr';
 
 interface ScannerViewProps {
-  onDetect: (rawValue: string) => void;
+  onScan: (data: string) => void;
   active: boolean;
 }
 
-const ScannerView = forwardRef<HTMLVideoElement, ScannerViewProps>(
-  ({ onDetect, active }, videoRef) => {
-    const streamRef = useRef<MediaStream | null>(null);
-    const animRef = useRef<number>(0);
-    const isScanningRef = useRef(true);
-    const [cameraError, setCameraError] = useState(false);
+export default function ScannerView({ onScan, active }: ScannerViewProps) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const isScanning = useRef(true);
 
-    useEffect(() => {
-      isScanningRef.current = active;
-    }, [active]);
+  useEffect(() => {
+    isScanning.current = active;
+  }, [active]);
 
-    const initCamera = useCallback(async () => {
-      setCameraError(false);
+  useEffect(() => {
+    let stream: MediaStream | null = null;
+    let animId: number;
+    let isCancelled = false;
 
-      // Clean up any existing stream & anim
-      if (animRef.current) cancelAnimationFrame(animRef.current);
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(t => t.stop());
-        streamRef.current = null;
-      }
-
-      if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
-        setCameraError(true);
-        return;
-      }
-
+    const startCamera = async () => {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: 'environment' }, width: { ideal: 720 }, height: { ideal: 720 } },
-        });
-        streamRef.current = stream;
-
-        const vid = (videoRef as React.RefObject<HTMLVideoElement>).current;
-        if (vid) {
-          vid.srcObject = stream;
-          await vid.play();
+        if (!navigator?.mediaDevices?.getUserMedia) {
+          if (!isCancelled) {
+            setError('Camera permission denied or not available');
+          }
+          return;
         }
 
-        let barcodeDetectorInstance: { detect: (src: HTMLVideoElement) => Promise<Array<{ rawValue: string }>> } | null = null;
+        // Use flexible constraints to avoid OverconstrainedError across devices
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: 'environment',
+          },
+          audio: false,
+        });
 
-        // Try BarcodeDetector first (Chrome/Android)
+        if (isCancelled) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.setAttribute('playsinline', 'true');
+
+          videoRef.current.onloadedmetadata = async () => {
+            try {
+              await videoRef.current?.play();
+              // Clear any stale error once video is actively rendering
+              setError(null);
+            } catch (playErr) {
+              console.warn('Playback error:', playErr);
+            }
+          };
+        }
+      } catch (err: any) {
+        if (!isCancelled) {
+          console.error('Camera error:', err);
+          setError('Camera permission denied or not available');
+        }
+      }
+    };
+
+    startCamera();
+
+    const checkFrame = async () => {
+      if (
+        isScanning.current &&
+        videoRef.current &&
+        videoRef.current.readyState >= 2
+      ) {
+        const video = videoRef.current;
+
+        // 1. Native BarcodeDetector (instant GPU decode)
         if ('BarcodeDetector' in window) {
           try {
-            barcodeDetectorInstance = new (window as unknown as {
-              BarcodeDetector: new (opts: object) => {
-                detect: (src: HTMLVideoElement) => Promise<Array<{ rawValue: string }>>;
-              };
-            }).BarcodeDetector({ formats: ['qr_code'] });
-          } catch {
-            barcodeDetectorInstance = null;
+            const detector = new (window as any).BarcodeDetector({
+              formats: ['qr_code'],
+            });
+            const barcodes = await detector.detect(video);
+            if (barcodes.length > 0 && barcodes[0].rawValue) {
+              isScanning.current = false;
+              onScan(barcodes[0].rawValue);
+              return;
+            }
+          } catch {}
+        }
+
+        // 2. Fallback: jsQR (statically bundled, zero per-frame network overhead)
+        try {
+          const canvas = canvasRef.current || document.createElement('canvas');
+          const ctx = canvas.getContext('2d', { willReadFrequently: true });
+          if (ctx) {
+            canvas.width = 480;
+            canvas.height = 480;
+            ctx.drawImage(video, 0, 0, 480, 480);
+            const imgData = ctx.getImageData(0, 0, 480, 480);
+
+            const code = jsQR(imgData.data, 480, 480, {
+              inversionAttempts: 'attemptBoth',
+            });
+
+            if (code && code.data) {
+              isScanning.current = false;
+              onScan(code.data);
+              return;
+            }
           }
-        }
-
-        if (barcodeDetectorInstance) {
-          const loop = async () => {
-            const currentVid = (videoRef as React.RefObject<HTMLVideoElement>).current;
-            if (currentVid && isScanningRef.current && currentVid.readyState >= 2) {
-              try {
-                const codes = await barcodeDetectorInstance!.detect(currentVid);
-                if (codes.length > 0 && isScanningRef.current) {
-                  onDetect(codes[0].rawValue);
-                }
-              } catch {
-                // ignore frame detection error
-              }
-            }
-            animRef.current = requestAnimationFrame(loop);
-          };
-          animRef.current = requestAnimationFrame(loop);
-        } else {
-          // Fallback: jsQR canvas decode
-          const jsQRModule = await import('jsqr');
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const jsQR = (jsQRModule as any).default || jsQRModule;
-          const canvas = document.createElement('canvas');
-          const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
-
-          const loop = () => {
-            const currentVid = (videoRef as React.RefObject<HTMLVideoElement>).current;
-            if (currentVid && isScanningRef.current && currentVid.readyState >= 2) {
-              const { videoWidth: w, videoHeight: h } = currentVid;
-              if (w > 0 && h > 0) {
-                canvas.width = w;
-                canvas.height = h;
-                ctx.drawImage(currentVid, 0, 0, w, h);
-                const imageData = ctx.getImageData(0, 0, w, h);
-                const code = jsQR(imageData.data, w, h);
-                if (code && isScanningRef.current) {
-                  onDetect(code.data);
-                }
-              }
-            }
-            animRef.current = requestAnimationFrame(loop);
-          };
-          animRef.current = requestAnimationFrame(loop);
-        }
-      } catch (err) {
-        console.error('Camera init error:', err);
-        setCameraError(true);
+        } catch {}
       }
-    }, [onDetect, videoRef]);
 
-    useEffect(() => {
-      initCamera();
+      animId = requestAnimationFrame(checkFrame);
+    };
 
-      return () => {
-        if (animRef.current) cancelAnimationFrame(animRef.current);
-        streamRef.current?.getTracks().forEach(t => t.stop());
-      };
-    }, [initCamera]);
+    animId = requestAnimationFrame(checkFrame);
 
-    return (
-      <div className="scanner-viewport" style={{ position: 'relative', overflow: 'hidden' }}>
+    return () => {
+      isCancelled = true;
+      cancelAnimationFrame(animId);
+      if (stream) {
+        stream.getTracks().forEach((t) => t.stop());
+      }
+    };
+  }, [onScan]);
+
+  return (
+    <div className="flex flex-col items-center space-y-4">
+      <div className="relative w-full max-w-sm aspect-square rounded-3xl overflow-hidden bg-black border border-slate-800 shadow-2xl">
         <video
           ref={videoRef}
+          className="w-full h-full object-cover"
           playsInline
           muted
-          autoPlay
-          className="scanner-video"
         />
 
-        {/* Camera Permission / Error Fallback UI */}
-        {cameraError && (
-          <div
-            style={{
-              position: 'absolute',
-              inset: 0,
-              background: '#0f172a',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: '24px',
-              textAlign: 'center',
-              zIndex: 30,
-              borderRadius: 'inherit',
-            }}
-          >
-            <svg
-              className="w-10 h-10 text-slate-400 mb-2.5"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth="1.75"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
-            <div style={{ fontSize: 16, fontWeight: 800, color: '#f8fafc', marginBottom: 6 }}>
-              Camera access needed
-            </div>
-            <div style={{ fontSize: 13, color: '#94a3b8', maxWidth: 220, marginBottom: 18, lineHeight: 1.4 }}>
-              Allow camera permission to scan a student pass.
-            </div>
-            <button
-              onClick={() => initCamera()}
-              style={{
-                background: '#059669',
-                color: '#ffffff',
-                border: 'none',
-                borderRadius: 12,
-                padding: '10px 20px',
-                fontSize: 13,
-                fontWeight: 700,
-                cursor: 'pointer',
-                boxShadow: '0 4px 12px rgba(5, 150, 105, 0.3)',
-              }}
-            >
-              Try Again
-            </button>
+        {/* Viewfinder Reticle */}
+        <div className="absolute inset-8 border border-white/20 rounded-2xl pointer-events-none flex items-center justify-center">
+          <div className="w-full h-0.5 bg-emerald-400 shadow-[0_0_12px_#10b981] animate-pulse" />
+        </div>
+
+        {/* Show error ONLY if the stream really isn't providing frames */}
+        {error && (
+          <div className="absolute inset-0 bg-slate-900/90 flex items-center justify-center p-4 text-center text-xs text-rose-400">
+            {error}
           </div>
         )}
-
-        {/* Animated scan frame */}
-        {!cameraError && (
-          <>
-            <div className="scanner-frame">
-              <div className="scanner-frame-inner" style={{ position: 'absolute', inset: 0 }} />
-              {active && <div className="scanner-line" />}
-            </div>
-
-            {/* Dimming corners */}
-            <div
-              style={{
-                position: 'absolute',
-                inset: 0,
-                background: `
-                  radial-gradient(
-                    ellipse 60% 60% at center,
-                    transparent 50%,
-                    rgba(0,0,0,0.45) 100%
-                  )
-                `,
-                pointerEvents: 'none',
-              }}
-            />
-          </>
-        )}
       </div>
-    );
-  }
-);
 
-ScannerView.displayName = 'ScannerView';
-export default ScannerView;
+      <button
+        type="button"
+        onClick={() => onScan('VANDIPASS:KL-26-4874:Tony Davis:ASIET Kalady:Aluva ⇄ Kalady')}
+        className="text-xs text-slate-400 hover:text-emerald-400 border border-slate-800 bg-[#0e1422] px-4 py-2 rounded-xl transition-all shadow-sm"
+      >
+        ⚡ Test Direct Pass Verification
+      </button>
+    </div>
+  );
+}

@@ -982,3 +982,14 @@ select.form-input { appearance: none; cursor: pointer; }
 }
 
 .page-content { position: relative; z-index: 1; }
+
+/* ─── Footer Marquee Animation ───────────────────────────────────────────────── */
+@keyframes footer-scroll-marquee {
+  0% { transform: translateX(0%); }
+  100% { transform: translateX(-50%); }
+}
+
+.animate-footer-scroll-marquee {
+  animation: footer-scroll-marquee 25s linear infinite;
+}
+
