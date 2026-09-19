@@ -49,23 +49,14 @@ export default function LoginPage() {
 
   const handleSignIn = (e: React.FormEvent) => {
     e.preventDefault();
-
-    if (email.includes('depot')) {
-      localStorage.setItem('vandipass_user', email);
-      router.push('/depot');
-    } else if (email.includes('conductor')) {
-      router.push('/conductor');
-    } else {
-      localStorage.setItem('vandipass_user', email);
-      router.push('/student');
-    }
+    localStorage.setItem('vandipass_user', email);
+    router.push('/');
   };
 
   const handleSelectDemo = (role: DemoRole) => {
     setEmail(role.email);
-    setPassword('demo-session-token');
     localStorage.setItem('vandipass_user', role.email);
-    router.push(role.route);
+    router.push('/');
   };
 
   return (
