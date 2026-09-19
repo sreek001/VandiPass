@@ -26,23 +26,23 @@ export default function NavHeader() {
     <header className="sticky top-0 z-40 w-full border-b border-slate-200/80 bg-white/95 backdrop-blur-md">
       <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
         
-        {/* Brand: Enlarged Elephant Logo without green KSRTC badge */}
-        <Link href="/" className="flex items-center gap-3.5 group">
-          <div className="relative w-14 h-14 overflow-hidden flex items-center justify-center group-hover:scale-105 transition-transform">
+        {/* Brand: Prominent Elephant Artwork */}
+        <Link href="/" className="flex items-center gap-4 group">
+          <div className="relative w-20 h-16 sm:w-24 sm:h-18 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform duration-200">
             <Image
               src="/logo.png"
               alt="VandiPass Logo"
-              width={56}
-              height={56}
+              width={120}
+              height={80}
               className="object-contain w-full h-full"
               priority
             />
           </div>
-          <div>
-            <span className="font-extrabold text-slate-900 text-lg tracking-tight block">
+          <div className="flex flex-col justify-center">
+            <span className="font-extrabold text-slate-900 text-xl sm:text-2xl tracking-tight leading-none block">
               VandiPass
             </span>
-            <span className="text-[11px] text-slate-500 font-medium block -mt-1">
+            <span className="text-xs text-slate-500 font-medium tracking-normal mt-1 block">
               Digital Student Concession
             </span>
           </div>
